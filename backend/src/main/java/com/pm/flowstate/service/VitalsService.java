@@ -24,6 +24,9 @@ public class VitalsService {
     // open SSE connections per session
     private final Map<Long, List<SseEmitter>> emitters = new ConcurrentHashMap<>();
 
+    // latest baseline per session, set by VitalsSummaryService once the baseline window is over
+    private final Map<Long, VitalReadingDto> baselines = new ConcurrentHashMap<>();
+
     // what the frontend receives on every message; baseline + decision are null until they exist
     public record StreamEvent(VitalReadingDto vitals, Object baseline, Object decision) {
     }
@@ -34,8 +37,12 @@ public class VitalsService {
             vitalRepository.save(new VitalReading(
                     session.getId(), Instant.now(),
                     dto.pulse(), dto.breathing(), dto.blinks()));
-            send(session.getId(), new StreamEvent(dto, null, null));
+            send(session.getId(), new StreamEvent(dto, baselines.get(session.getId()), null));
         });
+    }
+
+    public void setBaseline(Long sessionId, VitalReadingDto baseline) {
+        baselines.put(sessionId, baseline);
     }
 
     public SseEmitter subscribe(Long sessionId) {
