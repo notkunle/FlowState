@@ -11,9 +11,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # installing, check /usr/lib/cmake/ or /usr/lib/x86_64-linux-gnu/cmake/ for
 # the *Config.cmake files the packages actually ship, and adjust
 # find_package()/target_link_libraries() to match.
-list(APPEND CMAKE_PREFIX_PATH "$ENV{SMARTSPECTRA_SDK_PATH}")
+# Only needed if the SDK isn't installed to a standard system path
+# (i.e. you're pointing at a local checkout instead of the apt-installed
+# libsmartspectra-dev/libphysiologyedge-dev packages). If it was installed
+# via the Presage PPA, this is usually unnecessary — remove it if
+# find_package below succeeds without it.
+if(DEFINED ENV{SMARTSPECTRA_SDK_PATH})
+    list(APPEND CMAKE_PREFIX_PATH "$ENV{SMARTSPECTRA_SDK_PATH}")
+endif()
+
 find_package(SmartSpectra CONFIG REQUIRED)
-target_link_libraries(your_target SmartSpectra::SDK)
+find_package(nlohmann_json REQUIRED)
 
 add_executable(presage-client main.cpp)
 
@@ -21,10 +29,7 @@ target_include_directories(presage-client PRIVATE /usr/include)
 
 target_link_libraries(presage-client
     PRIVATE
+        SmartSpectra::SDK
         nlohmann_json::nlohmann_json
         pthread
-        # smartspectra / physiologyedge shared libs — replace with the
-        # correct target/lib name once confirmed, e.g.:
-        # SmartSpectra::SmartSpectra
-        # or plain: -lsmartspectra -lphysiologyedge
 )
