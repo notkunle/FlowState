@@ -1,0 +1,5 @@
+The "Flow State" Remote Work Enforcer
+Core Concept: A productivity tool for knowledge workers that automatically shields you from distractions when you are deeply focused and forces you to rest when your stress peaks.
+Presage: Uses your laptop webcam to continuously track your blink rate, pulse, and facial expressions. A dramatically lowered blink rate combined with a steady pulse is a strong physiological indicator of "flow state."
+Gemini API: When "flow" is detected, Gemini triggers API calls to mute Slack, pause email notifications, and update your status. If Presage detects rising stress (frowning, elevated pulse), Gemini intervenes, suggesting an optimal 5-minute break activity based on what you were just working on.
+Tiger Data: Ingests the time-series biometric data alongside your computer application usage. Over time, users can query the database to discover their peak flow hours (e.g., "I hit deep focus 40% faster on Tuesday mornings than Friday afternoons").
