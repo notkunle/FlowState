@@ -3,9 +3,11 @@ spring:
     name: FlowState
 
   # Loads secrets from a local .env file (KEY=value lines) if one exists.
-  # Real environment variables still take precedence.
+  # Checks backend/ first, then the repo root. Real environment variables still take precedence.
   config:
-    import: optional:file:.env[.properties]
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:../.env[.properties]
 
   # Tiger Data (Postgres + TimescaleDB). Tiger requires SSL, so DB_URL should end with ?sslmode=require
   datasource:
