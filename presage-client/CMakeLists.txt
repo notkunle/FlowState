@@ -1,35 +1,25 @@
-cmake_minimum_required(VERSION 3.19)
-project(presage-client LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.22.1)
+project(presage_client CXX)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# SMARTSPECTRA_SDK_PATH must point at the folder you extracted the
+# smartspectra-sdk-<version>-windows-x64.zip into, e.g. C:\SmartSpectra
+set(SMARTSPECTRA_SDK_DIR "$ENV{SMARTSPECTRA_SDK_PATH}")
+if (SMARTSPECTRA_SDK_DIR STREQUAL "")
+    message(FATAL_ERROR "SMARTSPECTRA_SDK_PATH is not set. Set it to the folder you extracted the SmartSpectra Windows SDK zip into.")
+endif ()
 
-# Installed via the Presage PPA:
-#   sudo apt install libphysiologyedge-dev libsmartspectra-dev
-#
-# The exact CMake package/target names below are placeholders — after
-# installing, check /usr/lib/cmake/ or /usr/lib/x86_64-linux-gnu/cmake/ for
-# the *Config.cmake files the packages actually ship, and adjust
-# find_package()/target_link_libraries() to match.
-# Only needed if the SDK isn't installed to a standard system path
-# (i.e. you're pointing at a local checkout instead of the apt-installed
-# libsmartspectra-dev/libphysiologyedge-dev packages). If it was installed
-# via the Presage PPA, this is usually unnecessary — remove it if
-# find_package below succeeds without it.
-if(DEFINED ENV{SMARTSPECTRA_SDK_PATH})
-    list(APPEND CMAKE_PREFIX_PATH "$ENV{SMARTSPECTRA_SDK_PATH}")
-endif()
-
+list(APPEND CMAKE_PREFIX_PATH "${SMARTSPECTRA_SDK_DIR}")
 find_package(SmartSpectra CONFIG REQUIRED)
-find_package(nlohmann_json REQUIRED)
 
 add_executable(presage-client main.cpp)
+target_link_libraries(presage-client SmartSpectra::SDK)
 
-target_include_directories(presage-client PRIVATE /usr/include)
-
-target_link_libraries(presage-client
-    PRIVATE
-        SmartSpectra::SDK
-        nlohmann_json::nlohmann_json
-        pthread
+# Set the standard on the TARGET directly, after find_package(), so it can't
+# be silently clobbered by CMAKE_CXX_STANDARD getting reset while the SDK's
+# own SmartSpectraConfig.cmake runs (which is what was happening before —
+# the compile line kept showing -std:c++17 despite the variable being set
+# to 20 earlier in this file).
+set_target_properties(presage-client PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
 )
