@@ -46,17 +46,17 @@ flowstate:
     api-key: ${GEMINI_API_KEY:}
     model: ${GEMINI_MODEL:gemini-3.8-flash}
     # How often Gemini decides focus / stress / neutral
-    decision-interval: 90s
+    decision-interval: 30s
 
   vitals:
     # presage = real webcam via presage-client, fake = generated readings, replay = recorded session
     source: ${VITALS_SOURCE:fake}
     summary-interval: 30s
-    baseline-duration: 3m
+    baseline-duration: 45s
 
   presage:
     api-key: ${SMARTSPECTRA_API_KEY:}
-    executable: ${PRESAGE_EXECUTABLE:../presage-client/build/Release/presage-client.exe}
+    executable: ${PRESAGE_EXECUTABLE:../presage-client/build/presage-client.exe}
     sdk-path: ${SMARTSPECTRA_SDK_PATH:C:/SmartSpectra}
     emit-interval-ms: 1000
 

@@ -5,11 +5,11 @@ import com.pm.flowstate.model.FocusSession;
 import com.pm.flowstate.repository.SessionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
-
 
 
 @RestController
@@ -30,6 +30,22 @@ public class SessionController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A session is already running");
         }
         return sessionRepository.save(new FocusSession(taskLabel, Instant.now()));
+    }
+
+    // GET /api/sessions/active
+    // Lets the frontend re-attach to a session that is already running — after a
+    // page refresh, or when the backend was started before the browser. Without
+    // this the UI can get permanently stuck: the session exists, so POST
+    // /api/sessions returns 409, but the UI has no session id so it never opens
+    // the vitals stream and shows "No active session" while data flows fine
+    // behind it.
+    // Returns 204 No Content when nothing is running, so the frontend can tell
+    // "no session" apart from an error.
+    @GetMapping("/active")
+    public ResponseEntity<FocusSession> active() {
+        return sessionRepository.findFirstByEndedAtIsNullOrderByStartedAtDesc()
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     // POST /api/sessions/1/stop
@@ -54,7 +70,4 @@ public class SessionController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Session " + id + " not found"));
     }
-    }
-
-
-
+}

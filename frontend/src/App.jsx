@@ -24,7 +24,7 @@ export default function App() {
                 {session && (
                     <p style={{ fontSize: "12px", color: colors.textMuted, margin: "6px 0 0" }}>
                         {connected ? "Live" : "Connecting..."}
-                        {!decision && " · first check-in comes after a ~3 min baseline"}
+                        {!decision && " · first check-in comes after a ~45s baseline"}
                     </p>
                 )}
             </section>
