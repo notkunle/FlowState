@@ -37,9 +37,18 @@ public class VitalsService {
 
     // save a reading to the running session and stream it; ignored if no session is running
     public void save(VitalReadingDto dto) {
+        save(dto, Instant.now());
+    }
+
+    // Same, but with the timestamp the reading was actually taken at.
+    // PresageReaderService uses this so the row keeps presage-client's own
+    // recordedAt instead of "whenever the backend got around to it" — the gap
+    // matters because recordedAt is the hypertable's time column, and
+    // VitalsSummaryService's windows are computed from it.
+    public void save(VitalReadingDto dto, Instant recordedAt) {
         sessionRepository.findFirstByEndedAtIsNullOrderByStartedAtDesc().ifPresent(session -> {
             vitalRepository.save(new VitalReading(
-                    session.getId(), Instant.now(),
+                    session.getId(), recordedAt,
                     dto.pulse(), dto.breathing(), dto.blinks()));
             send(session.getId(), new StreamEvent(dto, baselines.get(session.getId()), decisions.get(session.getId())));
         });
