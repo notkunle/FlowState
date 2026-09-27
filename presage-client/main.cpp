@@ -1,155 +1,159 @@
 // presage-client/main.cpp
 //
-// Wraps the SmartSpectra SDK and prints one JSON object per line to stdout:
-//   {"timestamp":1732650000000,"pulseBpm":72.4,"blinkRate":14.2,"confidence":0.91}
+// Reads vitals from the webcam via the SmartSpectra C++ SDK and prints one
+// JSON object per reading to STDOUT (one per line). PresageReaderService on
+// the Spring Boot side reads this process's stdout line-by-line and parses
+// each line into a VitalReadingDto.
 //
-// Spring Boot's PresageReaderService launches this binary, reads stdout
-// line-by-line, and deserializes each line straight into VitalReadingDto.
-// Keep this JSON shape and the Dto in lockstep.
+// IMPORTANT: stdout is reserved for JSON-lines output only. All human-
+// readable status/error logging goes to stderr, so it never corrupts the
+// stream the backend is parsing.
 //
-// NOTE: the actual SmartSpectra API calls (session/config types, callback
-// registration, field names on the metrics object) are isolated inside
-// PresageVitalsSource below. Everything else in this file — the JSON
-// cadence, stdout contract, signal handling — is what the Java side
-// depends on and won't need to change once you fill that class in from
-// the real headers (installed under /usr/include after
-// `apt install libsmartspectra-dev libphysiologyedge-dev`) and the
-// sample apps that ship alongside the SDK.
+// Field names below are taken from Presage's own cpp/docs/metrics.md
+// (breathing().rate().value()/.timestamp()/.stable(),
+// cardio().pulse_rate().value()/.timestamp(), face().blinking().detected()).
+// One thing that doc makes explicit: there is no SDK-provided "blink rate" —
+// blinking() is a per-frame detected()/not-detected() event, not a rate.
+// This file emits the raw detection events; turning that into a rate
+// (blinks per minute) belongs in VitalsSummaryService on the backend, which
+// already needs to do 30s-window math for the baseline comparison.
+//
+// Two fields are used by analogy with documented patterns rather than
+// confirmed verbatim in the docs — .stable() on pulse_rate (confirmed only
+// for breathing rate in the docs, but described generically as a property
+// of "Measurement types") and a timestamp on the blinking DetectionStatus
+// (not shown in the docs at all). Both are marked below; verify against
+// smartspectra/messages/metrics.h if either fails to compile.
 
-#include <atomic>
+#include <smartspectra/messages/metric_types.pb.h>
+#include <smartspectra/messages/metrics.h>
+#include <smartspectra/smartspectra.h>
+#include <smartspectra/smartspectra_config.h>
+
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
-#include <functional>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <thread>
 
-#include <nlohmann/json.hpp>
-
-#include <smartspectra/smartspectra.h>   // real SDK headers go here
-
-using json = nlohmann::json;
+namespace spectra = presage::smartspectra;
 
 namespace {
 
-std::atomic<bool> g_running{true};
+volatile std::sig_atomic_t g_stop_requested = 0;
 
-void handle_sigint(int /*signal*/) {
-    g_running = false;
+void HandleSignal(int) {
+    g_stop_requested = 1;
 }
 
-long long now_ms() {
+std::string ResolveApiKey(int argc, char** argv) {
+    if (argc > 1) {
+        return argv[1];
+    }
+    if (const char* key = std::getenv("SMARTSPECTRA_API_KEY")) {
+        return key;
+    }
+    return {};
+}
+
+int64_t NowEpochMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::system_clock::now().time_since_epoch())
         .count();
 }
 
-struct VitalsSample {
-    double pulse_bpm;
-    double blink_rate;   // blinks per minute
-    double confidence;   // 0.0 - 1.0 signal quality
-};
-
-// ---------------------------------------------------------------------
-// PresageVitalsSource: the ONLY place that should need real SDK calls.
-// ---------------------------------------------------------------------
-class PresageVitalsSource {
-public:
-    PresageVitalsSource(std::string api_key, int camera_index)
-        : api_key_(std::move(api_key)), camera_index_(camera_index) {}
-
-    // Configure for continuous measurement, cardiac (pulse) + myofacial
-    // (blink) metrics only — leave breathing/blood-pressure disabled,
-    // they're not needed here and blood pressure isn't on the free tier.
-    void start(std::function<void(const VitalsSample&)> on_sample) {
-        on_sample_ = std::move(on_sample);
-
-        // --- Replace this block with real SmartSpectra SDK setup ---
-        // Roughly (check actual class/method names in the installed
-        // headers / sample apps):
-        //   smartspectra::Config config;
-        //   config.set_api_key(api_key_);
-        //   config.set_camera_index(camera_index_);
-        //   config.enable_cardiac(true);
-        //   config.enable_myofacial(true);   // blink detection
-        //   config.enable_breathing(false);
-        //   config.set_mode(smartspectra::Mode::Continuous);
-        //
-        //   session_ = smartspectra::CreateSession(config);
-        //   session_->SetMetricsCallback(
-        //       [this](const smartspectra::Metrics& m) {
-        //           VitalsSample s{
-        //               m.cardiac().pulse_rate_bpm(),
-        //               m.myofacial().blink_rate_per_minute(),
-        //               m.quality().confidence()
-        //           };
-        //           on_sample_(s);
-        //       });
-        //   session_->Start();
-        // -------------------------------------------------------------
-
-        running_ = true;
-    }
-
-    void stop() {
-        // session_->Stop();
-        running_ = false;
-    }
-
-    bool is_running() const { return running_; }
-
-private:
-    std::string api_key_;
-    int camera_index_;
-    bool running_ = false;
-    std::function<void(const VitalsSample&)> on_sample_;
-    // std::unique_ptr<smartspectra::Session> session_;
-};
-
 }  // namespace
 
 int main(int argc, char** argv) {
-    std::signal(SIGINT, handle_sigint);
-    std::signal(SIGTERM, handle_sigint);
+    std::signal(SIGINT, HandleSignal);
+    std::signal(SIGTERM, HandleSignal);
 
-    const char* env_key = std::getenv("SMARTSPECTRA_API_KEY");
-    std::string api_key = env_key ? env_key : "";
-    int camera_index = 0;
-
-    for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
-        if (arg == "--api-key" && i + 1 < argc) {
-            api_key = argv[++i];
-        } else if (arg == "--camera" && i + 1 < argc) {
-            camera_index = std::stoi(argv[++i]);
-        }
-    }
-
+    const std::string api_key = ResolveApiKey(argc, argv);
     if (api_key.empty()) {
-        std::cerr << "Missing SmartSpectra API key "
-                     "(set SMARTSPECTRA_API_KEY or pass --api-key)\n";
+        std::cerr << "Usage: presage-client.exe YOUR_API_KEY\n"
+                  << "or set SMARTSPECTRA_API_KEY=YOUR_API_KEY\n";
         return 1;
     }
 
-    PresageVitalsSource source(api_key, camera_index);
+    spectra::SmartSpectraConfig config;
+    config.api_key = api_key;
+    config.requested_metrics = spectra::SmartSpectraConfig::BreathingMetrics();
+    config.AddMetrics(spectra::SmartSpectraConfig::CardioMetrics());
+    config.AddMetrics(spectra::SmartSpectraConfig::FaceMetrics());
+    // Explicitly requested: cpp/docs/metrics.md's advanced example lists
+    // BLINKING separately from the FaceMetrics() bundle, so don't assume
+    // the bundle already includes it.
+    config.AddMetrics({spectra::MetricType::BLINKING});
 
-    source.start([](const VitalsSample& sample) {
-        json j;
-        j["timestamp"] = now_ms();
-        j["pulseBpm"] = sample.pulse_bpm;
-        j["blinkRate"] = sample.blink_rate;
-        j["confidence"] = sample.confidence;
+    spectra::SmartSpectra sdk(config);
 
-        // One JSON object per line, flushed immediately — Java reads
-        // this with BufferedReader::readLine() in a tight loop.
-        std::cout << j.dump() << std::endl;
+    sdk.SetOnMetrics([](const spectra::Metrics& metrics, int64_t timestamp_us) {
+        std::ostringstream json;
+        json << "{"
+             << "\"recordedAt\":" << NowEpochMs() << ","
+             << "\"sdkTimestampUs\":" << timestamp_us;
+
+        // Peak/event-driven: rate_size() can legitimately be 0 between
+        // valid updates (per metrics.md) — that's not an error, just no
+        // new sample this callback.
+        if (metrics.has_breathing() && metrics.breathing().rate_size() > 0) {
+            const auto& rate = metrics.breathing().rate(metrics.breathing().rate_size() - 1);
+            json << ",\"breathingRate\":" << rate.value()
+                 << ",\"breathingRateTimestampUs\":" << rate.timestamp()
+                 << ",\"breathingRateStable\":" << (rate.stable() ? "true" : "false");
+        }
+
+        if (metrics.has_cardio() && metrics.cardio().pulse_rate_size() > 0) {
+            const auto& pulse = metrics.cardio().pulse_rate(metrics.cardio().pulse_rate_size() - 1);
+            json << ",\"pulseRate\":" << pulse.value()
+                 << ",\"pulseRateTimestampUs\":" << pulse.timestamp();
+            // stable() is documented generically for "Measurement types" but
+            // only demonstrated on breathing().rate() in the docs — if this
+            // line fails to compile, drop it and check metrics.h directly.
+            json << ",\"pulseRateStable\":" << (pulse.stable() ? "true" : "false");
+        }
+
+        // Frame-driven, not a rate: raw detection events. Compute an actual
+        // blink rate (events per minute) downstream in VitalsSummaryService.
+        if (metrics.has_face() && metrics.face().blinking_size() > 0) {
+            const auto& blink = metrics.face().blinking(metrics.face().blinking_size() - 1);
+            json << ",\"blinkDetected\":" << (blink.detected() ? "true" : "false");
+        }
+
+        json << "}";
+
+        std::cout << json.str() << std::endl;  // flush every line
     });
 
-    while (g_running && source.is_running()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    sdk.SetOnValidationStatusChanged(
+        [](const spectra::ValidationStatus& status, int64_t) {
+            std::cerr << "Validation [" << status.code << "]: " << status.hint << "\n";
+        });
+
+    sdk.SetOnError([](const spectra::SmartSpectraError& error) {
+        std::cerr << "Error [" << static_cast<int>(error.code) << "]: " << error.message << "\n";
+    });
+
+    const auto source_error = sdk.UseCamera().SetResolution(1280, 720).SetFps(30).Build();
+    if (!source_error.ok()) {
+        std::cerr << "Failed to create camera source: " << source_error.message << "\n";
+        return 1;
     }
 
-    source.stop();
+    if (const auto err = sdk.Start(); !err.ok()) {
+        std::cerr << "Failed to start: " << err.message << "\n";
+        return 1;
+    }
+
+    std::cerr << "presage-client running. Press Ctrl+C to stop.\n";
+    while (!g_stop_requested) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    if (const auto err = sdk.Stop(); !err.ok()) {
+        std::cerr << "Stop failed: " << err.message << "\n";
+    }
     return 0;
 }

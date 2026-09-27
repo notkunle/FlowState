@@ -1,77 +1,52 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
+import { BASE_URL } from "../api/client";
 
-// PLACEHOLDER — no backend yet. Swap the mock interval below for a real
-// EventSource against VitalsController's SSE stream once it exists:
-//
-//   const es = new EventSource(`${BASE_URL}/sessions/${sessionId}/vitals/stream`);
-//   es.onmessage = (event) => setData(JSON.parse(event.data));
-//   es.onerror = () => setConnected(false);
-//   return () => es.close();
+function round1(value) {
+    return value == null ? null : Math.round(value * 10) / 10;
+}
 
-const STATES = [
-    {
-        state: "focused",
-        reason: "Steady pulse, low blink rate.",
-        suggestion: "Keep going, no break needed yet.",
-    },
-    {
-        state: "distracted",
-        reason: "Elevated blink rate, irregular breathing.",
-        suggestion: "Consider a short reset before continuing.",
-    },
-    {
-        state: "fatigued",
-        reason: "Pulse and breathing both trending down.",
-        suggestion: "A 5-minute break would help right now.",
-    },
-];
-
-const BASELINE = { pulse: 71, breathing: 15, blinks: 17 };
-
-function randomAround(value, spread) {
-    return Math.round(value + (Math.random() * spread * 2 - spread));
+function roundVitals(v) {
+    return v ? { pulse: round1(v.pulse), breathing: round1(v.breathing), blinks: round1(v.blinks) } : null;
 }
 
 /**
- * Streams live vitals + focus-state decisions for a session.
- * @param {string | null} sessionId - null/undefined means "not streaming"
+ * Streams live vitals + Gemini decisions for a session from
+ * GET /api/sessions/{id}/vitals/stream (Server-Sent Events).
+ * Each message is { vitals, baseline, decision }; baseline and decision stay null
+ * until the backend has them (baseline after ~3 min, first decision shortly after).
+ * @param {number | null} sessionId - null/undefined means "not streaming"
  * @returns {{
  *   vitals: { pulse: number, breathing: number, blinks: number } | null,
- *   baseline: { pulse: number, breathing: number, blinks: number },
- *   decision: { state: string, reason: string, suggestion: string } | null,
+ *   baseline: { pulse: number, breathing: number, blinks: number } | null,
+ *   decision: { state: "focus" | "stress" | "neutral", reason: string, suggestion: string } | null,
  *   connected: boolean
  * }}
  */
 export function useVitalsStream(sessionId) {
     const [vitals, setVitals] = useState(null);
+    const [baseline, setBaseline] = useState(null);
     const [decision, setDecision] = useState(null);
     const [connected, setConnected] = useState(false);
-    const intervalRef = useRef(null);
 
     useEffect(() => {
-        if (!sessionId) {
-            setVitals(null);
-            setDecision(null);
-            setConnected(false);
-            return;
-        }
+        setVitals(null);
+        setBaseline(null);
+        setDecision(null);
+        setConnected(false);
+        if (!sessionId) return;
 
-        setConnected(true);
-
-        intervalRef.current = setInterval(() => {
-            setVitals({
-                pulse: randomAround(BASELINE.pulse, 6),
-                breathing: randomAround(BASELINE.breathing, 2),
-                blinks: randomAround(BASELINE.blinks, 8),
-            });
-            setDecision(STATES[Math.floor(Math.random() * STATES.length)]);
-        }, 2000);
-
-        return () => {
-            clearInterval(intervalRef.current);
-            setConnected(false);
+        const es = new EventSource(`${BASE_URL}/sessions/${sessionId}/vitals/stream`);
+        es.onopen = () => setConnected(true);
+        es.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            setVitals(roundVitals(data.vitals));
+            setBaseline(roundVitals(data.baseline));
+            setDecision(data.decision);
         };
+        es.onerror = () => setConnected(false); // EventSource retries on its own
+
+        return () => es.close();
     }, [sessionId]);
 
-    return { vitals, baseline: BASELINE, decision, connected };
+    return { vitals, baseline, decision, connected };
 }
