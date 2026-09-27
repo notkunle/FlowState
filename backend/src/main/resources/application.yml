@@ -57,6 +57,8 @@ flowstate:
   presage:
     api-key: ${SMARTSPECTRA_API_KEY:}
     executable: ${PRESAGE_EXECUTABLE:../presage-client/build/Release/presage-client.exe}
+    sdk-path: ${SMARTSPECTRA_SDK_PATH:C:/SmartSpectra}
+    emit-interval-ms: 1000
 
   replay:
     file: classpath:recordings/demo-session.jsonl
