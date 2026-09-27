@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useSession } from "../context/SessionContext";
 import { startSession, stopSession } from "../api/sessionApi";
+import { colors } from "../styles/colors";
 
 export default function SessionControls() {
     const { session, setSession } = useSession();
@@ -54,24 +55,24 @@ export default function SessionControls() {
                     disabled={isActive || loading}
                 />
                 {isActive ? (
-                    <button onClick={handleStop} disabled={loading}>
-                        {loading ? "Stopping..." : "Stop session"}
+                    <button onClick={handleStop} disabled={loading} className="stop-btn">
+                        {loading ? "Stopping..." : "⏸ Stop session"}
                     </button>
                 ) : (
-                    <button onClick={handleStart} disabled={loading}>
-                        {loading ? "Starting..." : "Start session"}
+                    <button onClick={handleStart} disabled={loading} className="start-btn">
+                        {loading ? "Starting..." : "🌱 Start session"}
                     </button>
                 )}
             </div>
 
             {error && (
-                <p style={{ color: "var(--text-danger, red)", fontSize: "13px", marginTop: "6px" }}>
+                <p style={{ color: "#a3452f", fontSize: "13px", marginTop: "6px" }}>
                     {error}
                 </p>
             )}
 
             {isActive && (
-                <p style={{ fontSize: "13px", color: "var(--text-secondary, gray)", marginTop: "6px" }}>
+                <p style={{ fontSize: "13px", color: colors.textSecondary, marginTop: "6px" }}>
                     Session running: {session.taskLabel}
                 </p>
             )}
