@@ -22,7 +22,7 @@ export default function SessionControls() {
             const newSession = await startSession({ taskLabel: taskLabel.trim() });
             setSession(newSession);
         } catch (err) {
-            setError("Couldn't start the session. Try again.");
+            setError(err.message || "Couldn't start the session. Try again.");
             console.error(err);
         } finally {
             setLoading(false);
@@ -37,7 +37,7 @@ export default function SessionControls() {
             setSession(null);
             setTaskLabel("");
         } catch (err) {
-            setError("Couldn't stop the session. Try again.");
+            setError(err.message || "Couldn't stop the session. Try again.");
             console.error(err);
         } finally {
             setLoading(false);

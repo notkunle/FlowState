@@ -1,33 +1,27 @@
-// PLACEHOLDER — no backend yet. Swap back to fetch() once
-// SessionController exposes POST /api/sessions and DELETE /api/sessions/{id}.
-
-const MOCK_DELAY_MS = 300;
-
-function delay(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
+import { request } from "./client";
 
 /**
- * Start a new focus session.
+ * Start a new focus session. POST /api/sessions?taskLabel=...
+ * Fails with 409 if another session is still running.
  * @param {{ taskLabel: string }} payload
- * @returns {Promise<{ id: string, taskLabel: string, startTime: string }>}
+ * @returns {Promise<{ id: number, taskLabel: string, startedAt: string, endedAt: string | null, active: boolean }>}
  */
-export async function startSession({ taskLabel }) {
-    await delay(MOCK_DELAY_MS);
-    return {
-        id: crypto.randomUUID(),
-        taskLabel,
-        startTime: new Date().toISOString(),
-    };
+export function startSession({ taskLabel }) {
+    return request(`/sessions?taskLabel=${encodeURIComponent(taskLabel)}`, { method: "POST" });
 }
 
 /**
- * Stop an active focus session.
- * @param {string} sessionId
- * @returns {Promise<null>}
+ * Stop a session. POST /api/sessions/{id}/stop
+ * @param {number} sessionId
  */
-export async function stopSession(sessionId) {
-    await delay(MOCK_DELAY_MS);
-    console.log(`[mock] stopped session ${sessionId}`);
-    return null;
+export function stopSession(sessionId) {
+    return request(`/sessions/${sessionId}/stop`, { method: "POST" });
+}
+
+/**
+ * Fetch one session. GET /api/sessions/{id}
+ * @param {number} sessionId
+ */
+export function getSession(sessionId) {
+    return request(`/sessions/${sessionId}`);
 }
