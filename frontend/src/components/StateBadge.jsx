@@ -1,9 +1,9 @@
 import { colors } from "../styles/colors";
 
 const STATE_STYLES = {
-    focused: { ...colors.focused, label: "Focused" },
-    distracted: { ...colors.distracted, label: "Distracted" },
-    fatigued: { ...colors.fatigued, label: "Fatigued" },
+    focus: { ...colors.focus, label: "Focused" },
+    stress: { ...colors.stress, label: "Stressed" },
+    neutral: { ...colors.neutral, label: "Neutral" },
 };
 
 const DEFAULT_STYLE = { ...colors.unknown, label: "Unknown" };

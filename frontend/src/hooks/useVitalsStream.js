@@ -1,77 +1,63 @@
 import { useState, useEffect, useRef } from "react";
 
-// PLACEHOLDER — no backend yet. Swap the mock interval below for a real
-// EventSource against VitalsController's SSE stream once it exists:
-//
-//   const es = new EventSource(`${BASE_URL}/sessions/${sessionId}/vitals/stream`);
-//   es.onmessage = (event) => setData(JSON.parse(event.data));
-//   es.onerror = () => setConnected(false);
-//   return () => es.close();
-
-const STATES = [
-    {
-        state: "focused",
-        reason: "Steady pulse, low blink rate.",
-        suggestion: "Keep going, no break needed yet.",
-    },
-    {
-        state: "distracted",
-        reason: "Elevated blink rate, irregular breathing.",
-        suggestion: "Consider a short reset before continuing.",
-    },
-    {
-        state: "fatigued",
-        reason: "Pulse and breathing both trending down.",
-        suggestion: "A 5-minute break would help right now.",
-    },
-];
-
-const BASELINE = { pulse: 71, breathing: 15, blinks: 17 };
-
-function randomAround(value, spread) {
-    return Math.round(value + (Math.random() * spread * 2 - spread));
-}
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api";
 
 /**
- * Streams live vitals + focus-state decisions for a session.
- * @param {string | null} sessionId - null/undefined means "not streaming"
+ * Streams live vitals + focus-state decisions for a session over SSE.
+ * @param {number | string | null | undefined} sessionId - falsy means "not streaming"
  * @returns {{
  *   vitals: { pulse: number, breathing: number, blinks: number } | null,
- *   baseline: { pulse: number, breathing: number, blinks: number },
+ *   baseline: { pulse: number, breathing: number, blinks: number } | null,
  *   decision: { state: string, reason: string, suggestion: string } | null,
  *   connected: boolean
  * }}
  */
 export function useVitalsStream(sessionId) {
     const [vitals, setVitals] = useState(null);
+    const [baseline, setBaseline] = useState(null);
     const [decision, setDecision] = useState(null);
     const [connected, setConnected] = useState(false);
-    const intervalRef = useRef(null);
+    const esRef = useRef(null);
 
     useEffect(() => {
         if (!sessionId) {
             setVitals(null);
+            setBaseline(null);
             setDecision(null);
             setConnected(false);
             return;
         }
 
-        setConnected(true);
+        const es = new EventSource(`${BASE_URL}/sessions/${sessionId}/vitals/stream`);
+        esRef.current = es;
 
-        intervalRef.current = setInterval(() => {
-            setVitals({
-                pulse: randomAround(BASELINE.pulse, 6),
-                breathing: randomAround(BASELINE.breathing, 2),
-                blinks: randomAround(BASELINE.blinks, 8),
-            });
-            setDecision(STATES[Math.floor(Math.random() * STATES.length)]);
-        }, 2000);
+        es.onopen = () => setConnected(true);
+
+        es.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                setVitals(data.vitals ?? null);
+                setBaseline(data.baseline ?? null);
+                setDecision(data.decision ?? null);
+            } catch (err) {
+                console.error("Failed to parse vitals stream message", err);
+            }
+        };
+
+        es.onerror = (err) => {
+            console.error("Vitals stream error", err);
+            setConnected(false);
+            if (es.readyState === EventSource.CLOSED) {
+                es.close();
+            }
+        };
 
         return () => {
-            clearInterval(intervalRef.current);
+            es.close();
+            esRef.current = null;
             setConnected(false);
         };
     }, [sessionId]);
 
-    return { vitals, baseline: BASELINE, decision, connected };
+    return { vitals, baseline, decision, connected };
 }

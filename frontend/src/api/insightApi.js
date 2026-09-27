@@ -1,32 +1,29 @@
-// PLACEHOLDER — no backend yet. Swap back to fetch() once
-// InsightController exposes GET /api/insights/hourly-focus.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api";
 
-const MOCK_DELAY_MS = 300;
-
-function delay(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+async function handleResponse(res) {
+    if (!res.ok) {
+        let message = `Request failed (${res.status})`;
+        try {
+            const body = await res.json();
+            message = body.detail || body.message || message;
+        } catch {
+            // not JSON, keep default message
+        }
+        throw new Error(message);
+    }
+    return res.json();
 }
 
 /**
  * Fetch hourly focus aggregate data for FocusChart.
- * Generates a plausible 24h spread so the chart isn't empty during dev.
- * @param {{ from?: string, to?: string }} [range] ISO date strings (ignored in mock)
- * @returns {Promise<Array<{ hour: string, avgFocusScore: number, sessionCount: number }>>}
+ * @param {{ from?: string, to?: string }} [range] - yyyy-MM-dd date strings
  */
-export async function getHourlyFocus(range = {}) {
-    await delay(MOCK_DELAY_MS);
+export async function getHourlyFocus({ from, to } = {}) {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const query = params.toString() ? `?${params}` : "";
 
-    return Array.from({ length: 24 }, (_, hour) => {
-        // rough bell curve peaking mid-morning + mid-afternoon, quiet overnight
-        const base =
-            hour >= 6 && hour <= 22
-                ? 40 + 40 * Math.sin(((hour - 6) / 16) * Math.PI)
-                : 5;
-
-        return {
-            hour: `${String(hour).padStart(2, "0")}:00`,
-            avgFocusScore: Math.round(base + (Math.random() * 10 - 5)),
-            sessionCount: hour >= 6 && hour <= 22 ? Math.floor(Math.random() * 4) : 0,
-        };
-    });
+    const res = await fetch(`${BASE_URL}/insights/hourly-focus${query}`);
+    return handleResponse(res);
 }
