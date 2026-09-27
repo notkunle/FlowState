@@ -34,6 +34,9 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
+    # Tiger ships pg_buffercache views in public, so Flyway sees a non-empty schema and
+    # baselines it; baselining at 0 (not the default 1) keeps V1 from being skipped
+    baseline-version: 0
 
 server:
   port: ${PORT:8086}
