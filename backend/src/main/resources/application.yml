@@ -34,6 +34,9 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
+    # Tiger ships pg_buffercache views in public, so Flyway sees a non-empty schema and
+    # baselines it; baselining at 0 (not the default 1) keeps V1 from being skipped
+    baseline-version: 0
 
 server:
   port: ${PORT:8086}
@@ -41,7 +44,7 @@ server:
 flowstate:
   gemini:
     api-key: ${GEMINI_API_KEY:}
-    model: ${GEMINI_MODEL:gemini-2.5-flash}
+    model: ${GEMINI_MODEL:gemini-3.8-flash}
     # How often Gemini decides focus / stress / neutral
     decision-interval: 90s
 
